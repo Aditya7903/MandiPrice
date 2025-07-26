@@ -500,18 +500,48 @@ def requestPage():
         return jsonify({"error": str(e)})
     
 @app.route('/all-data', methods=['GET'])
-def get_all_scraped_data():
-    try:
-        # Assuming you’ve already saved scraped results to a file
-        # Replace this with your actual data source
-        with open("scraped_data.json", "r") as file:
-            data = json.load(file)
-        return jsonify(data)
-    except FileNotFoundError:
-        return jsonify({"error": "scraped_data.json file not found."})
-    except Exception as e:
-        logger.error(f"Failed to load data: {str(e)}")
-        return jsonify({"error": "An error occurred while retrieving the data."})
+def get_all_data_everything():
+    # Extract mappings from existing functions
+    all_states = list(get_state_code.__annotations__.get("return", {}).keys()) or [
+        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir",
+        "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra",
+        "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+        "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+        "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+    ]
+    all_commodities = list(get_commodity_code.__annotations__.get("return", {}).keys()) or [
+        "Potato", "Tomato", "Onion", "Rice", "Wheat", "Maize", "Apple", "Banana",
+        "Orange", "Mango", "Grapes", "Watermelon", "Coconut", "Sugarcane",
+        "Cotton", "Jute", "Coffee", "Tea", "Milk", "Egg", "Fish", "Chicken",
+        "Mutton", "Beef", "Pork"
+    ]
+
+    results = []
+
+    # Hardcoded markets map (based on your current function)
+    market_mapping = {
+        "Karnataka": ["Bangalore", "Mysore", "Hubli"],
+        "Maharashtra": ["Pune", "Mumbai", "Nagpur"]
+    }
+
+    for state in all_states:
+        state_code = get_state_code(state)
+        if not state_code:
+            continue
+
+        for commodity in all_commodities:
+            for market in market_mapping.get(state, [""]):  # Use known or fallback
+                try:
+                    logger.info(f"Scraping {commodity} in {market}, {state}")
+                    data = get_agmarknet_data(state, commodity, market)
+                    if data:
+                        results.extend(data)
+                except Exception as e:
+                    logger.warning(f"Failed {state}-{market}-{commodity}: {str(e)}")
+                    continue
+
+    return jsonify(results)
 
 
 if __name__ == '__main__':
