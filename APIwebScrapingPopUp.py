@@ -49,18 +49,8 @@ def get_data_from_price_trends(state, commodity, market):
             "Connection": "keep-alive"
         }
 
-        max_retries = 3
-        delay = 2
-        for attempt in range(max_retries):
-            try:
-                response = session.get(url, headers=headers)
-                response.raise_for_status()
-                break
-            except RequestException as e:
-                logger.warning(f"Attempt {attempt+1}/{max_retries} failed: {e}")
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(delay)
+        response = session.get(url, headers=headers)
+        response.raise_for_status()
 
         soup = BeautifulSoup(response.text, 'html.parser')
         viewstate = soup.find('input', {'name': '__VIEWSTATE'})['value']
@@ -106,8 +96,6 @@ def get_data_from_price_trends(state, commodity, market):
             cells = row.find_all('td')
             if len(cells) >= 6:
                 market_name = cells[0].text.strip()
-                if market and market.lower() not in market_name.lower():
-                    continue
                 json_list.append({
                     "S.No": str(i),
                     "Date": f"{month}/{year}",
@@ -130,19 +118,38 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return jsonify({"message": "Welcome to KrishiMitra API", "usage": "/request?commodity=Tomato&state=Maharashtra&market=Pune"})
+    return jsonify({"message": "Welcome to KrishiMitra API", "usage": "/all-data"})
 
-@app.route('/request')
-def fetch_data():
-    commodity = request.args.get('commodity')
-    state = request.args.get('state')
-    market = request.args.get('market')
+@app.route('/all-data')
+def fetch_all_data():
+    states = list(get_state_code.__annotations__.get("return", {}).keys()) or [
+        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir",
+        "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra",
+        "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+        "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+        "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+    ]
+    commodities = list(get_commodity_code.__annotations__.get("return", {}).keys()) or [
+        "Potato", "Tomato", "Onion", "Rice", "Wheat", "Maize", "Apple", "Banana",
+        "Orange", "Mango", "Grapes", "Watermelon", "Coconut", "Sugarcane",
+        "Cotton", "Jute", "Coffee", "Tea", "Milk", "Egg", "Fish", "Chicken",
+        "Mutton", "Beef", "Pork"
+    ]
 
-    if not commodity or not state or not market:
-        return jsonify({"error": "Missing parameters"}), 400
+    all_data = []
+    for state in states:
+        for commodity in commodities:
+            logger.info(f"Scraping {commodity} for {state}")
+            try:
+                data = get_data_from_price_trends(state, commodity, None)
+                if data:
+                    all_data.extend(data)
+            except Exception as e:
+                logger.warning(f"Error fetching {commodity} for {state}: {str(e)}")
+                continue
 
-    data = get_data_from_price_trends(state, commodity, market)
-    return jsonify(data if data else {"message": "No data available"})
+    return jsonify(all_data if all_data else {"message": "No data fetched"})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
