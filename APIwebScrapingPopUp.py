@@ -7,10 +7,17 @@ import logging
 from datetime import datetime, timedelta
 import os
 from requests.exceptions import RequestException
+import random
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:102.0) Gecko/20100101 Firefox/102.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Safari/605.1.15"
+]
 
 def get_state_code(state_name):
     state_mapping = {
@@ -37,19 +44,19 @@ def get_commodity_code(commodity_name):
 
 def get_data_from_price_trends(state, commodity, market):
     try:
-        logger.info(f"Fetching price trends for {commodity} in {market}, {state}")
+        logger.info(f"Fetching price trends for {commodity} in {market or 'ALL MARKETS'}, {state}")
 
         url = "https://agmarknet.gov.in/PriceTrends/SA_Month_PriMV.aspx"
         session = requests.Session()
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+            "User-Agent": random.choice(USER_AGENTS),
             "Referer": "https://agmarknet.gov.in/",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Connection": "keep-alive"
         }
 
-        response = session.get(url, headers=headers)
+        response = session.get(url, headers=headers, timeout=10)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -77,7 +84,8 @@ def get_data_from_price_trends(state, commodity, market):
             'ctl00$cphBody$btnSubmit': 'Submit'
         }
 
-        response = session.post(url, data=form_data, headers=headers)
+        time.sleep(random.uniform(1.5, 3))
+        response = session.post(url, data=form_data, headers=headers, timeout=10)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -107,7 +115,7 @@ def get_data_from_price_trends(state, commodity, market):
                     "Modal Price": cells[4].text.strip()
                 })
 
-        logger.info(f"Collected {len(json_list)} records for {commodity} in {market}, {state}")
+        logger.info(f"Collected {len(json_list)} records for {commodity} in {market or 'ALL MARKETS'}, {state}")
         return json_list
 
     except Exception as e:
@@ -122,7 +130,7 @@ def home():
 
 @app.route('/all-data')
 def fetch_all_data():
-    states = list(get_state_code.__annotations__.get("return", {}).keys()) or [
+    states = [
         "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
         "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir",
         "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra",
@@ -130,7 +138,7 @@ def fetch_all_data():
         "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
         "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
     ]
-    commodities = list(get_commodity_code.__annotations__.get("return", {}).keys()) or [
+    commodities = [
         "Potato", "Tomato", "Onion", "Rice", "Wheat", "Maize", "Apple", "Banana",
         "Orange", "Mango", "Grapes", "Watermelon", "Coconut", "Sugarcane",
         "Cotton", "Jute", "Coffee", "Tea", "Milk", "Egg", "Fish", "Chicken",
@@ -140,8 +148,8 @@ def fetch_all_data():
     all_data = []
     for state in states:
         for commodity in commodities:
-            logger.info(f"Scraping {commodity} for {state}")
             try:
+                logger.info(f"Scraping {commodity} for {state}")
                 data = get_data_from_price_trends(state, commodity, None)
                 if data:
                     all_data.extend(data)
